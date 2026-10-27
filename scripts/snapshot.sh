@@ -6,7 +6,11 @@ serial=""; out=""
 while getopts "s:o:" opt; do case $opt in s) serial=$OPTARG;; o) out=$OPTARG;; *) exit 2;; esac; done
 [ -n "$serial" ] && [ -n "$out" ] || { echo "用法：snapshot.sh -s <序列号> -o <工作目录>" >&2; exit 2; }
 a() { adb -s "$serial" shell "$@" </dev/null; }
-snap="$out/snapshot"; mkdir -p "$snap"
+snap="$out/snapshot"
+if [ -e "$snap" ]; then
+  echo "快照已存在：$snap。为了保证能恢复到最初状态，不覆盖旧快照。确实要重拍，请换一个工作目录。" >&2; exit 1
+fi
+mkdir -p "$snap"
 {
   echo "font_scale=$(a settings get system font_scale | tr -d '\r')"
   echo "density_override=$(a wm density | tr -d '\r' | sed -n 's/Override density: //p')"
@@ -18,6 +22,7 @@ a pm list packages -u > "$snap/packages-all-users.txt"
 a pm list packages -d > "$snap/packages-disabled.txt" || true
 a cmd appops query-op REQUEST_INSTALL_PACKAGES allow > "$snap/appops-install-allow.txt" || true
 a cmd appops query-op SYSTEM_ALERT_WINDOW allow > "$snap/appops-overlay-allow.txt" || true
-a dumpsys notification > "$snap/notification.txt"
+# 只保留每个应用的通知开关（AppSettings 行），不导出通知标题和正文
+a dumpsys notification | grep -E "^ *AppSettings: " > "$snap/notification.txt" || true
 date '+%F %T' > "$snap/taken-at.txt"
 echo "快照已保存到 $snap"

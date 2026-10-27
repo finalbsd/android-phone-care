@@ -28,7 +28,8 @@ a pm list packages -d > "$raw/packages-disabled.txt" || true
 a dumpsys usagestats > "$raw/usagestats.txt"
 a cmd appops query-op REQUEST_INSTALL_PACKAGES allow > "$raw/appops-install.txt" || true
 a cmd appops query-op SYSTEM_ALERT_WINDOW allow > "$raw/appops-overlay.txt" || true
-a dumpsys notification > "$raw/notification.txt"
+# 只保留每个应用的通知开关（AppSettings 行），不导出通知标题和正文
+a dumpsys notification | grep -E "^ *AppSettings: " > "$raw/notification.txt" || true
 a cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED > "$raw/boot-receivers.txt" 2>/dev/null || true
 a cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER > "$raw/launcher-activities.txt" || true
 a dumpsys package > "$raw/dumpsys-package.txt"

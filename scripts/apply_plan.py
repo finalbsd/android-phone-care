@@ -3,10 +3,16 @@
 
 用法：
   apply_plan.py plan.json --dry-run                 # 只列出将要做的事，不连手机也能看
-  apply_plan.py plan.json -s <序列号> -o <工作目录>  # 执行；需要先运行 snapshot.sh
+  apply_plan.py plan.json -s <序列号> -o <工作目录> --confirmed
+      # 执行；需要先运行 snapshot.sh。--confirmed 表示家人已看过 --dry-run 的结果并同意，智能体不得自行加上
 
-输出（工作目录下）：changes.log（逐项结果）、restore.sh（一键恢复）、manual.md（需要在手机上手动操作的项）。
-受保护的核心组件（电话、短信、设置、桌面等）一律拒绝删除和限制。
+输出（工作目录下）：changes.log（逐项结果）、restore-<时间>.sh（本次的一键恢复，每次执行单独一份，不覆盖）、
+manual.md（需要在手机上手动操作的项）。
+安全限制：
+- 受保护的核心组件（电话、短信、设置、桌面、WebView、蓝牙、Wi-Fi、紧急广播等）一律拒绝删除和限制。
+- 系统应用只允许卸载“桌面上有图标”的（用户看得见的应用）；没有图标的后台组件默认拒绝，
+  确有需要时加 --allow-hidden-system，并逐个说明理由。
+- 包名只允许字母、数字、下划线和点。
 """
 from __future__ import annotations
 
@@ -26,7 +32,12 @@ PROTECTED = [
     r"telephony", r"telecom", r"\bsos\b", r"emergency", r"findphone", r"findmydevice",
     r"com\.google\.android\.gms", r"com\.google\.android\.gsf", r"\.secure\b", r"safecenter",
     r"securitycenter", r"systemmanager", r"providers\.", r"^android$", r"\.shell$",
+    r"webview", r"bluetooth", r"\.nfc\b", r"\.wifi", r"networkstack", r"cellbroadcast", r"\.ims\b",
+    r"carrierconfig", r"\.mtp\b", r"externalstorage", r"keychain", r"certinstaller", r"\.location\b",
+    r"\.server\.", r"ext\.services", r"\.se$", r"modulemetadata", r"\.vpndialogs", r"inputdevices",
+    r"wallpaperbackup", r"\.backup", r"setupwizard", r"\.updater\b", r"\.ota\b",
 ]
+PKG_RE = re.compile(r"^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$")
 
 
 def protected(pkg: str) -> bool:
@@ -47,6 +58,10 @@ class Phone:
 
     def installed(self, pkg: str) -> bool:
         return f"package:{pkg}" in self.sh("pm", "list", "packages", "--user", "0", pkg).split()
+
+    def launcher_packages(self) -> set:
+        out = self.sh("cmd", "package", "query-activities", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER")
+        return {m.group(1) for m in re.finditer(r"^\s*([\w.]+)/", out, re.M)}
 
     def enabled(self, pkg: str) -> bool:
         return f"package:{pkg}" in self.sh("pm", "list", "packages", "-e", pkg).split()
@@ -103,18 +118,26 @@ def main() -> None:
     ap.add_argument("-s", "--serial")
     ap.add_argument("-o", "--out")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--confirmed", action="store_true", help="家人已看过 --dry-run 并同意执行")
+    ap.add_argument("--allow-hidden-system", action="store_true", help="允许卸载桌面上没有图标的系统组件（不建议）")
     a = ap.parse_args()
     plan = json.loads(Path(a.plan).read_text(encoding="utf-8"))
+    bad = [it["package"] for _, it in plan_items(plan) if not PKG_RE.match(it.get("package", ""))]
+    if bad:
+        sys.exit("计划里有不合法的包名，已停止：" + "、".join(bad))
     if a.dry_run:
         dry_run(plan)
         return
     if not (a.serial and a.out):
         sys.exit("执行时需要 -s <序列号> 和 -o <工作目录>。")
+    if not a.confirmed:
+        sys.exit("还没确认。先运行 --dry-run 给家人看，家人同意后再加 --confirmed 执行。")
 
     work = Path(a.out)
     snap = load_snapshot(work)
     ph = Phone(a.serial)
     log, restore, reinstall = [], [], []
+    visible = ph.launcher_packages()
 
     def record(item: str, action: str, result: str, ok: bool):
         log.append(f"{dt.datetime.now():%F %T}\t{'成功' if ok else '失败'}\t{item}\t{action}\t{result}")
@@ -132,6 +155,9 @@ def main() -> None:
             if ok:
                 reinstall.append(label)
         elif kind == "uninstall_system_apps":
+            if pkg not in visible and not a.allow_hidden_system:
+                record(label, "卸载系统应用", "桌面上没有图标的系统组件，默认拒绝（需要时加 --allow-hidden-system）", False)
+                continue
             res = ph.sh("pm", "uninstall", "-k", "--user", "0", pkg)
             ok = not ph.installed(pkg)
             if ok:
@@ -186,16 +212,19 @@ def main() -> None:
 
     work.mkdir(parents=True, exist_ok=True)
     (work / "changes.log").open("a", encoding="utf-8").write("\n".join(log) + "\n")
-    rs = ["#!/usr/bin/env bash", "# 一键恢复：把手机还原到执行计划之前的状态。用法：./restore.sh <序列号>",
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    rfile = work / f"restore-{stamp}.sh"
+    rs = ["#!/usr/bin/env bash", f"# 一键恢复：撤销 {stamp} 这次执行的改动。用法：./{rfile.name} <序列号>",
+          "# 执行过多次时，按时间从新到旧依次运行各次的恢复脚本。",
           "set -u", "S=${1:?请传入手机序列号（adb devices 可查）}", ""] + list(reversed(restore))
     if reinstall:
         rs += ["", "# 以下第三方 App 已彻底卸载，脚本无法恢复，需要时请从应用商店重新下载："] + [f"#   {x}" for x in reinstall]
-    (work / "restore.sh").write_text("\n".join(rs) + "\n", encoding="utf-8")
-    (work / "restore.sh").chmod(0o755)
+    rfile.write_text("\n".join(rs) + "\n", encoding="utf-8")
+    rfile.chmod(0o755)
     if plan.get("manual"):
         (work / "manual.md").write_text("# 需要在手机上手动操作\n\n" + "\n".join(f"- [ ] {m}" for m in plan["manual"]) + "\n", encoding="utf-8")
     fails = sum(1 for l in log if "\t失败\t" in l)
-    print(f"\n完成：{len(log)} 项，失败 {fails} 项。记录 {work/'changes.log'}，恢复脚本 {work/'restore.sh'}")
+    print(f"\n完成：{len(log)} 项，失败 {fails} 项。记录 {work/'changes.log'}，恢复脚本 {rfile}")
 
 
 if __name__ == "__main__":

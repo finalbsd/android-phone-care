@@ -16,13 +16,20 @@
 
 ## 先看：怎么恢复
 
-- 执行完会在工作目录生成 `restore.sh`，运行 `./restore.sh <手机序列号>` 可以把系统应用、字号、显示大小、动画、权限恢复到改动前的状态。
-- 第三方 App 是彻底卸载的，只能从应用商店重新下载，`restore.sh` 末尾列出了名单。
+- 每次执行完会在工作目录生成 `restore-<时间>.sh`，运行 `./restore-<时间>.sh <手机序列号>` 可以把系统应用、字号、显示大小、动画、权限恢复到改动前的状态。执行过多次的，按时间从新到旧依次运行。
+- 第三方 App 是彻底卸载的，App 里的数据（登录状态、聊天记录等）会一起删掉，只能从应用商店重新下载，恢复脚本末尾列出了名单。删之前请确认重要数据已备份。
 - 恢复出厂设置也会让所有系统应用回来（会清空手机数据，一般用不到）。
+
+## 使用前请注意
+
+- **请在机主知情同意下使用**，不要用在别人的手机上。
+- **隐私**：智能体读取的应用列表、使用记录、截图，会作为对话内容发送给它所用的模型服务商。脚本不导出短信、通话记录、相册和通知正文。
+- **紧急呼叫**：打开“连按电源键自动拨号”后可能误拨，请把家人号码排在 110 前面，并告诉老人误拨了怎么说。
 
 ## 风险说明
 
-- 本 Skill 不 root、不解锁、不刷机，不删除系统分区里的文件，不碰电话、短信、设置、桌面等核心组件（脚本里有保护名单）。
+- 本 Skill 不 root、不解锁、不刷机，不删除系统分区里的文件，不碰电话、短信、设置、桌面、WebView、蓝牙、Wi-Fi、紧急广播等核心组件（脚本里有保护名单）；系统应用只允许卸载桌面上有图标的。
+- 执行前必须先预览计划，家人确认后才加 `--confirmed` 执行。
 - 不同品牌、不同系统版本差别很大。目前只在 vivo（OriginOS，Android 11）和华为（HarmonyOS 4）上手动实测过流程，其他品牌未测试，请先在不重要的手机上试，或者每一步都看清楚再确认。
 - 开着 USB 调试时，部分银行 App 会提示“支付风险”。清理完请关闭开发者选项。
 - 这是一个按“现状”提供的工具，使用造成的问题由使用者自行承担（见 LICENSE）。
@@ -51,7 +58,7 @@ scripts/analyze.py work/dad --labels work/dad/labels.json   # 生成 report.md
 # 按 templates/plan.example.json 写 plan.json
 scripts/apply_plan.py plan.json --dry-run          # 先看计划
 scripts/snapshot.sh -s <序列号> -o work/dad        # 存快照
-scripts/apply_plan.py plan.json -s <序列号> -o work/dad   # 执行
+scripts/apply_plan.py plan.json -s <序列号> -o work/dad --confirmed   # 家人确认后执行
 # 一个月后回访
 scripts/checkup.sh -s <序列号> -o work/dad-1m && scripts/analyze.py work/dad-1m --compare work/dad
 ```
