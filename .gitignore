@@ -1,0 +1,9 @@
+# 体检和执行产生的工作目录含手机信息，不进仓库
+work/
+*.apk
+labels.json
+plan.json
+restore.sh
+changes.log
+__pycache__/
+.DS_Store

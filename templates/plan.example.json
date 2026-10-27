@@ -1,0 +1,34 @@
+{
+  "_说明": "改动计划示例。先用 apply_plan.py --dry-run 给家人看，确认后再执行。所有包名都只是示例，按体检结果填写。",
+  "device_note": "爸爸的手机",
+  "uninstall_user_apps": [
+    {"package": "com.example.fontbig", "label": "某放大字体 App", "reason": "从没打开过，能安装其他应用"}
+  ],
+  "uninstall_system_apps": [
+    {"package": "com.example.vendor.tips", "label": "使用技巧", "reason": "家人确认可删"}
+  ],
+  "restrict_apps": [
+    {"package": "com.example.vendor.game", "label": "游戏中心", "reason": "删不掉，收回通知和后台运行"}
+  ],
+  "revoke_install": [
+    {"package": "com.example.news", "label": "某资讯 App"}
+  ],
+  "revoke_overlay": [
+    {"package": "com.example.video", "label": "某短视频组件"}
+  ],
+  "settings": {
+    "font_scale": 1.5,
+    "density": 540,
+    "animation_scale": 0.5
+  },
+  "manual": [
+    "关通知：除微信外的应用（打开方式见 SKILL.md 第 6 步，改完用 dumpsys notification 核对）",
+    "关负一屏、系统广告与个性化推荐（位置见 vendors/）",
+    "桌面上的领金币小组件、网页快捷方式：长按移除",
+    "应用商店：关闭免下载安装、装完自动打开",
+    "安装验证：改为账号密码验证",
+    "紧急呼叫：打开，紧急联系人加家人号码并排在 110 前面",
+    "查找手机：打开",
+    "定时开关机：每天 3:00 关机、3:05 开机"
+  ]
+}
